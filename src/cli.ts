@@ -154,6 +154,14 @@ async function main(): Promise<void> {
     });
 
   program
+    .command("clients")
+    .description("Print MCP client setup instructions for Codex, Windsurf, and Claude Code.")
+    .action(async () => {
+      const config = await loadCommandConfig();
+      console.log(formatSetupHint(config));
+    });
+
+  program
     .command("serve")
     .description("Serve the local Cloudflare docs MCP endpoint over Streamable HTTP.")
     .option("--device <device>", "Model device to use while serving", validateModelDevice)
@@ -162,6 +170,8 @@ async function main(): Promise<void> {
         await searchEngine.warmup();
         const server = await startHttpServer(config, searchEngine);
         console.log(`Listening on http://${config.server.host}:${config.server.port}${config.server.mcpPath}`);
+        console.log("");
+        console.log(formatSetupHint(config));
 
         const stop = async () => {
           await new Promise<void>((resolve, reject) => {

@@ -124,6 +124,74 @@ Health endpoint:
 http://127.0.0.1:8787/healthz
 ```
 
+## Client Setup
+
+Start the local MCP server first:
+
+```bash
+npm run serve
+```
+
+Default server URL:
+
+```text
+http://127.0.0.1:8787/mcp
+```
+
+### Codex
+
+Add the server from the CLI:
+
+```bash
+codex mcp add cloudflareDocs --url http://127.0.0.1:8787/mcp
+```
+
+Or add it manually in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.cloudflareDocs]
+url = "http://127.0.0.1:8787/mcp"
+```
+
+### Windsurf
+
+Add the server to `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "cloudflareDocs": {
+      "serverUrl": "http://127.0.0.1:8787/mcp"
+    }
+  }
+}
+```
+
+### Claude Code
+
+Add the server from the CLI:
+
+```bash
+claude mcp add --transport http --scope user cloudflareDocs http://127.0.0.1:8787/mcp
+```
+
+Or add it in a project `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "cloudflareDocs": {
+      "type": "http",
+      "url": "http://127.0.0.1:8787/mcp"
+    }
+  }
+}
+```
+
+### Agent Behavior
+
+Whichever client you use, add an instruction telling the agent to consult this MCP server first for Cloudflare documentation lookups.
+
 ## MCP Surface
 
 ### Tool: `search_cloudflare_docs`

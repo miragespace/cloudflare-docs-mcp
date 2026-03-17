@@ -1,15 +1,29 @@
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import type { NextFunction, Request, Response } from "express";
 import type { Server as HttpServer } from "node:http";
 import type { AppConfig } from "./types.js";
 import { SearchEngine } from "./search.js";
 import { createDocsMcpServer } from "./mcp-server.js";
 
+function logHttpRequest(req: Request, res: Response, next: NextFunction): void {
+  const startedAt = Date.now();
+  res.on("finish", () => {
+    const durationMs = Date.now() - startedAt;
+    const host = req.headers.host ?? "<missing-host>";
+    console.log(
+      `[${new Date().toISOString()}] HTTP ${req.method} ${req.originalUrl} host=${host} status=${res.statusCode} durationMs=${durationMs}`,
+    );
+  });
+  next();
+}
+
 export async function startHttpServer(config: AppConfig, searchEngine: SearchEngine): Promise<HttpServer> {
   const app = createMcpExpressApp({
     host: config.server.host,
-    allowedHosts: config.server.allowedHosts,
+    ...(config.server.allowedHosts ? { allowedHosts: config.server.allowedHosts } : {}),
   });
+  app.use(logHttpRequest);
 
   app.get("/healthz", (_req, res) => {
     res.json({

@@ -7,7 +7,7 @@ export interface AppConfig {
     host: string;
     port: number;
     mcpPath: string;
-    allowedHosts: string[];
+    allowedHosts?: string[] | undefined;
   };
   storage: {
     dataDir: string;

@@ -94,6 +94,7 @@ export async function loadConfig(
       ?? loaded.storage?.dataDir
       ?? DEFAULT_DATA_DIR,
   );
+  const allowedHosts = loaded.server?.allowedHosts?.filter((host) => host.trim() !== "");
   const modelCacheDir = resolve(
     dataDir,
     loaded.storage?.modelCacheDir ?? DEFAULT_MODEL_CACHE_DIR,
@@ -104,7 +105,7 @@ export async function loadConfig(
       host: process.env.CLOUDFLARE_DOCS_MCP_HOST ?? loaded.server?.host ?? DEFAULT_HOST,
       port: Number(process.env.CLOUDFLARE_DOCS_MCP_PORT ?? loaded.server?.port ?? DEFAULT_PORT),
       mcpPath: loaded.server?.mcpPath ?? DEFAULT_MCP_PATH,
-      allowedHosts: loaded.server?.allowedHosts ?? [],
+      allowedHosts: allowedHosts && allowedHosts.length > 0 ? allowedHosts : undefined,
     },
     storage: {
       dataDir,
@@ -138,12 +139,18 @@ export async function loadConfig(
 }
 
 export function formatSetupHint(config: AppConfig): string {
+  const serverUrl = `http://${config.server.host}:${config.server.port}${config.server.mcpPath}`;
+  const windsurfConfig = `{"mcpServers":{"cloudflareDocs":{"serverUrl":"${serverUrl}"}}}`;
   return [
-    `${APP_NAME} is configured at http://${config.server.host}:${config.server.port}${config.server.mcpPath}`,
+    `${APP_NAME} is configured at ${serverUrl}`,
     "Use this MCP server before relying on built-in Cloudflare knowledge.",
     `Embeddings model: ${config.models.embeddingModelId}`,
     `Reranker model: ${config.models.rerankerModelId}`,
     `Model device: ${config.models.device}`,
+    "Start the MCP server with: npm run serve",
+    `Codex: codex mcp add cloudflareDocs --url ${serverUrl}`,
+    `Claude Code: claude mcp add --transport http --scope user cloudflareDocs ${serverUrl}`,
+    `Windsurf: add this to ~/.codeium/windsurf/mcp_config.json -> ${windsurfConfig}`,
     "Latency tip: keep retrieved context tight. Good retrieval beats huge local contexts.",
   ].join("\n");
 }
