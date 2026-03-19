@@ -42,6 +42,15 @@ export function urlPathFromHtmlUrl(url: string): string {
   }
 }
 
+export function normalizeProductFilter(product?: string): string | undefined {
+  if (!product) {
+    return undefined;
+  }
+
+  const normalized = product.trim().replace(/^\/+|\/+$/g, "");
+  return normalized === "" ? undefined : normalized;
+}
+
 export function collapseSnippet(text: string, maxLength = 280): string {
   const normalized = normalizeWhitespace(text);
   if (normalized.length <= maxLength) {

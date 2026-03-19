@@ -13,7 +13,7 @@ import type {
   SyncRunRecord,
   SyncSummary,
 } from "./types.js";
-import { packFloat32, unpackFloat32, urlPathFromHtmlUrl } from "./utils.js";
+import { normalizeProductFilter, packFloat32, unpackFloat32, urlPathFromHtmlUrl } from "./utils.js";
 
 function createSchema(db: DatabaseType): void {
   db.pragma("journal_mode = WAL");
@@ -79,15 +79,6 @@ function createSchema(db: DatabaseType): void {
     CREATE INDEX IF NOT EXISTS idx_documents_url_path ON documents(url_path);
     CREATE INDEX IF NOT EXISTS idx_chunks_document ON chunks(document_id);
   `);
-}
-
-function cleanProduct(product?: string): string | undefined {
-  if (!product) {
-    return undefined;
-  }
-
-  const normalized = product.trim().replace(/^\/+|\/+$/g, "");
-  return normalized === "" ? undefined : normalized;
 }
 
 function toFtsQuery(query: string): string {
@@ -357,7 +348,7 @@ export class DatabaseStore {
   }
 
   searchLexical(query: string, options: SearchOptions): LexicalCandidate[] {
-    const product = cleanProduct(options.product);
+    const product = normalizeProductFilter(options.product);
     const rows = this.db.prepare(`
       SELECT
         c.id AS chunk_id,
@@ -411,8 +402,8 @@ export class DatabaseStore {
     }));
   }
 
-  loadEmbeddings(options: Pick<SearchOptions, "product" | "includeDeprioritized">): EmbeddingRow[] {
-    const product = cleanProduct(options.product);
+  *iterateEmbeddings(options: Pick<SearchOptions, "product" | "includeDeprioritized">): IterableIterator<EmbeddingRow> {
+    const product = normalizeProductFilter(options.product);
     const rows = this.db.prepare(`
       SELECT
         e.chunk_id AS chunk_id,
@@ -430,11 +421,11 @@ export class DatabaseStore {
       WHERE (@product IS NULL OR d.url_path LIKE @productPattern)
         AND (@includeDeprioritized = 1 OR d.chatbot_deprioritize = 0)
       ORDER BY e.chunk_id ASC
-    `).all({
+    `).iterate({
       product: product ?? null,
       productPattern: product ? `/${product}/%` : null,
       includeDeprioritized: options.includeDeprioritized ? 1 : 0,
-    }) as Array<{
+    }) as IterableIterator<{
       chunk_id: number;
       document_id: number;
       title: string;
@@ -446,16 +437,18 @@ export class DatabaseStore {
       vector: Buffer;
     }>;
 
-    return rows.map((row) => ({
-      chunkId: row.chunk_id,
-      documentId: row.document_id,
-      title: row.title,
-      sourceHtmlUrl: row.source_html_url,
-      sourceMdUrl: row.source_md_url,
-      chatbotDeprioritize: row.chatbot_deprioritize === 1,
-      headingPath: row.heading_path,
-      content: row.content,
-      vector: unpackFloat32(row.vector),
-    }));
+    for (const row of rows) {
+      yield {
+        chunkId: row.chunk_id,
+        documentId: row.document_id,
+        title: row.title,
+        sourceHtmlUrl: row.source_html_url,
+        sourceMdUrl: row.source_md_url,
+        chatbotDeprioritize: row.chatbot_deprioritize === 1,
+        headingPath: row.heading_path,
+        content: row.content,
+        vector: unpackFloat32(row.vector),
+      };
+    }
   }
 }

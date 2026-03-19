@@ -184,4 +184,120 @@ Use Browser Rendering to capture screenshots and scrape pages with a headless br
     await search.close();
     store.close();
   });
+
+  it("refreshes semantic candidates between searches instead of serving stale cached embeddings", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cloudflare-docs-mcp-semantic-refresh-"));
+    createdDirs.push(dir);
+    const config = makeConfig(dir);
+    const store = new DatabaseStore(config.storage.dbPath);
+    const modelClient = new FakeModelClient();
+
+    await seedStore(
+      store,
+      modelClient,
+      `---
+title: Durable Objects Overview · Cloudflare Workers docs
+chatbotDeprioritize: false
+source_url:
+  html: https://developers.cloudflare.com/workers/durable-objects/overview/
+  md: https://developers.cloudflare.com/workers/durable-objects/overview/index.md
+---
+
+Durable Objects provide stateful coordination for distributed applications.`,
+      config,
+    );
+
+    const search = new SearchEngine(config, store, modelClient);
+    const initial = await search.search("actor memory", {
+      mode: "semantic",
+      limit: 5,
+      product: "workers",
+      includeDeprioritized: false,
+    });
+
+    expect(initial[0]?.title).toContain("Overview");
+
+    await seedStore(
+      store,
+      modelClient,
+      `---
+title: Durable Objects Actors · Cloudflare Workers docs
+chatbotDeprioritize: false
+source_url:
+  html: https://developers.cloudflare.com/workers/durable-objects/actors/
+  md: https://developers.cloudflare.com/workers/durable-objects/actors/index.md
+---
+
+Use Durable Objects to build actor memory systems with stateful coordination.`,
+      config,
+    );
+
+    const refreshed = await search.search("actor memory", {
+      mode: "semantic",
+      limit: 5,
+      product: "workers",
+      includeDeprioritized: false,
+    });
+
+    expect(refreshed[0]?.title).toContain("Actors");
+    await search.close();
+    store.close();
+  });
+
+  it("treats equivalent product filter variants as the same semantic scope", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cloudflare-docs-mcp-semantic-product-"));
+    createdDirs.push(dir);
+    const config = makeConfig(dir);
+    const store = new DatabaseStore(config.storage.dbPath);
+    const modelClient = new FakeModelClient();
+
+    await seedStore(
+      store,
+      modelClient,
+      `---
+title: Durable Objects in Workers · Cloudflare Workers docs
+chatbotDeprioritize: false
+source_url:
+  html: https://developers.cloudflare.com/workers/durable-objects/
+  md: https://developers.cloudflare.com/workers/durable-objects/index.md
+---
+
+Build actor memory workflows in Workers with Durable Objects.`,
+      config,
+    );
+
+    await seedStore(
+      store,
+      modelClient,
+      `---
+title: Durable Objects from Pages · Cloudflare Pages docs
+chatbotDeprioritize: false
+source_url:
+  html: https://developers.cloudflare.com/pages/functions/bindings/
+  md: https://developers.cloudflare.com/pages/functions/bindings/index.md
+---
+
+Pages Functions can also call Durable Objects for actor memory use cases.`,
+      config,
+    );
+
+    const search = new SearchEngine(config, store, modelClient);
+    const variants = ["workers", "/workers", "workers/", "/workers/"];
+
+    for (const product of variants) {
+      const results = await search.search("actor memory", {
+        mode: "semantic",
+        limit: 5,
+        product,
+        includeDeprioritized: false,
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results[0]?.title).toContain("Workers");
+      expect(results[0]?.sourceHtmlUrl).toContain("/workers/");
+    }
+
+    await search.close();
+    store.close();
+  });
 });

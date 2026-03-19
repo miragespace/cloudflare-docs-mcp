@@ -9,7 +9,7 @@ import type {
   SearchResult,
   StatusReport,
 } from "./types.js";
-import { clamp, collapseSnippet, cosineSimilarity } from "./utils.js";
+import { clamp, collapseSnippet, cosineSimilarity, normalizeProductFilter } from "./utils.js";
 
 interface CandidateAccumulator {
   chunkId: number;
@@ -26,14 +26,17 @@ interface CandidateAccumulator {
   semanticRank?: number;
 }
 
+interface RankedSemanticCandidate {
+  row: EmbeddingRow;
+  score: number;
+}
+
 export class SearchEngine {
   constructor(
     private readonly config: AppConfig,
     private readonly store: DatabaseStore,
     private readonly modelClient: ModelClient,
   ) {}
-
-  private semanticCandidatesCache = new Map<string, EmbeddingRow[]>();
 
   async warmup(): Promise<void> {
     await this.modelClient.warmup();
@@ -43,20 +46,30 @@ export class SearchEngine {
     await this.modelClient.close();
   }
 
-  private cacheKey(options: Pick<SearchOptions, "product" | "includeDeprioritized">): string {
-    return `${options.product ?? ""}:${options.includeDeprioritized ? "1" : "0"}`;
+  private normalizeOptions(options: SearchOptions): SearchOptions {
+    return {
+      ...options,
+      product: normalizeProductFilter(options.product),
+    };
   }
 
-  private loadSemanticCandidates(options: Pick<SearchOptions, "product" | "includeDeprioritized">): EmbeddingRow[] {
-    const key = this.cacheKey(options);
-    const cached = this.semanticCandidatesCache.get(key);
-    if (cached) {
-      return cached;
+  private insertRankedSemanticCandidate(ranked: RankedSemanticCandidate[], candidate: RankedSemanticCandidate): void {
+    const limit = this.config.search.semanticCandidateLimit;
+    if (limit <= 0) {
+      return;
     }
 
-    const rows = this.store.loadEmbeddings(options);
-    this.semanticCandidatesCache.set(key, rows);
-    return rows;
+    const lowest = ranked[ranked.length - 1];
+    if (ranked.length >= limit && lowest && candidate.score <= lowest.score) {
+      return;
+    }
+
+    const insertAt = ranked.findIndex((entry) => candidate.score > entry.score);
+    ranked.splice(insertAt === -1 ? ranked.length : insertAt, 0, candidate);
+
+    if (ranked.length > limit) {
+      ranked.pop();
+    }
   }
 
   getStatus(): StatusReport {
@@ -98,23 +111,18 @@ export class SearchEngine {
     query: string,
     options: SearchOptions,
   ): Promise<void> {
-    const rows = this.loadSemanticCandidates(options);
-    if (rows.length === 0) {
-      return;
-    }
-
     const [queryVector] = await this.modelClient.embedTexts([query]);
     if (!queryVector) {
       return;
     }
 
-    const ranked = rows
-      .map((row) => ({
+    const ranked: RankedSemanticCandidate[] = [];
+    for (const row of this.store.iterateEmbeddings(options)) {
+      this.insertRankedSemanticCandidate(ranked, {
         row,
         score: cosineSimilarity(queryVector, row.vector),
-      }))
-      .sort((left, right) => right.score - left.score)
-      .slice(0, this.config.search.semanticCandidateLimit);
+      });
+    }
 
     for (const [index, hit] of ranked.entries()) {
       const contribution = 1 / (FUSION_RANK_CONSTANT + index + 1);
@@ -142,22 +150,23 @@ export class SearchEngine {
   }
 
   async search(query: string, options: SearchOptions): Promise<SearchResult[]> {
+    const normalizedOptions = this.normalizeOptions(options);
     const requestedLimit = clamp(options.limit, 1, this.config.search.maxLimit);
     const candidates: CandidateAccumulator[] = [];
 
-    if (options.mode !== "semantic") {
+    if (normalizedOptions.mode !== "semantic") {
       const lexical = this.store.searchLexical(query, {
-        ...options,
+        ...normalizedOptions,
         limit: Math.max(requestedLimit * 3, this.config.search.rerankTopK),
       });
       this.mergeLexical(candidates, lexical);
     }
 
-    if (options.mode !== "keyword") {
+    if (normalizedOptions.mode !== "keyword") {
       try {
-        await this.mergeSemantic(candidates, query, options);
+        await this.mergeSemantic(candidates, query, normalizedOptions);
       } catch {
-        if (options.mode === "semantic" && candidates.length === 0) {
+        if (normalizedOptions.mode === "semantic" && candidates.length === 0) {
           throw new Error("Semantic search is unavailable until model assets are installed locally.");
         }
       }
