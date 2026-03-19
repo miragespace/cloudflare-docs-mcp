@@ -1,0 +1,20 @@
+services:
+  cloudflare-docs-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.cuda
+    image: cloudflare-docs-mcp:cuda
+    restart: unless-stopped
+    gpus: all
+    ports:
+      - "8787:8787"
+    environment:
+      CLOUDFLARE_DOCS_MCP_HOST: 0.0.0.0
+      CLOUDFLARE_DOCS_MCP_PORT: 8787
+      CLOUDFLARE_DOCS_MCP_MODEL_DEVICE: cuda
+      # Uncomment and replace with the hostnames or IPs your LAN clients will use.
+      # CLOUDFLARE_DOCS_MCP_ALLOWED_HOSTS: 127.0.0.1,localhost,192.168.1.50,docsbox
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - ./data:/app/data

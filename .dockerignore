@@ -1,0 +1,10 @@
+.git
+.gitignore
+coverage
+data
+dist
+llms-full.txt
+node_modules
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

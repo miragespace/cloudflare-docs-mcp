@@ -66,6 +66,19 @@ function parseModelDevice(value: string | undefined): ModelDevice | undefined {
   return modelDeviceSchema.parse(value);
 }
 
+function parseCommaSeparatedList(value: string | undefined): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const items = value
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item !== "");
+
+  return items.length > 0 ? items : undefined;
+}
+
 async function readConfigFile(cwd: string, fileName: string): Promise<z.infer<typeof configSchema>> {
   const configPath = resolve(cwd, fileName);
 
@@ -94,7 +107,8 @@ export async function loadConfig(
       ?? loaded.storage?.dataDir
       ?? DEFAULT_DATA_DIR,
   );
-  const allowedHosts = loaded.server?.allowedHosts?.filter((host) => host.trim() !== "");
+  const allowedHosts = parseCommaSeparatedList(process.env.CLOUDFLARE_DOCS_MCP_ALLOWED_HOSTS)
+    ?? loaded.server?.allowedHosts?.filter((host) => host.trim() !== "");
   const modelCacheDir = resolve(
     dataDir,
     loaded.storage?.modelCacheDir ?? DEFAULT_MODEL_CACHE_DIR,

@@ -1,0 +1,38 @@
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates curl gnupg build-essential python3 \
+  && mkdir -p /etc/apt/keyrings \
+  && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+  && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" \
+    > /etc/apt/sources.list.d/nodesource.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends nodejs \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+ENV npm_config_update_notifier=false \
+  npm_config_fund=false \
+  ONNXRUNTIME_NODE_INSTALL_CUDA=v12 \
+  CLOUDFLARE_DOCS_MCP_HOST=0.0.0.0 \
+  CLOUDFLARE_DOCS_MCP_PORT=8787 \
+  CLOUDFLARE_DOCS_MCP_DATA_DIR=/app/data \
+  CLOUDFLARE_DOCS_MCP_MODEL_DEVICE=cuda \
+  NVIDIA_VISIBLE_DEVICES=all \
+  NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+COPY package.json package-lock.json ./
+RUN npm ci \
+  && npm rebuild onnxruntime-node
+
+COPY . .
+RUN chmod +x docker/entrypoint.sh
+
+EXPOSE 8787
+
+ENTRYPOINT ["./docker/entrypoint.sh"]
+CMD ["serve"]

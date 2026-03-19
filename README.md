@@ -46,6 +46,59 @@ Not implemented yet:
 npm install
 ```
 
+## Docker
+
+For a separate GPU box, this repo now includes a CUDA-focused Docker image and Compose example:
+
+```bash
+docker compose -f docker-compose.cuda.yml up --build -d
+```
+
+What this does:
+
+- builds a CUDA 12 / Node 24 image from [`Dockerfile.cuda`](/home/rachel/code/cloudflare-docs-mcp/Dockerfile.cuda)
+- persists the SQLite index and model cache in `./data`
+- binds the MCP server to `0.0.0.0:8787` for LAN access
+- auto-runs `setup` on first start before serving
+
+Requirements on the remote machine:
+
+- Docker Engine
+- Docker Compose
+- NVIDIA Container Toolkit
+- a working NVIDIA driver on the host
+
+Useful commands:
+
+```bash
+docker compose -f docker-compose.cuda.yml logs -f
+docker compose -f docker-compose.cuda.yml exec cloudflare-docs-mcp npm run devices
+docker compose -f docker-compose.cuda.yml exec cloudflare-docs-mcp npm run status
+docker compose -f docker-compose.cuda.yml run --rm cloudflare-docs-mcp sync
+```
+
+Default LAN URL:
+
+```text
+http://SERVER_IP:8787/mcp
+```
+
+Health check:
+
+```text
+http://SERVER_IP:8787/healthz
+```
+
+### LAN Safety
+
+This server has no auth. If you bind it to `0.0.0.0`, keep it on a trusted LAN or VPN.
+
+If you want Host-header protection while exposing it on your LAN, set `CLOUDFLARE_DOCS_MCP_ALLOWED_HOSTS` in [`docker-compose.cuda.yml`](/home/rachel/code/cloudflare-docs-mcp/docker-compose.cuda.yml) to the IPs or DNS names clients will use, for example:
+
+```text
+127.0.0.1,localhost,192.168.1.50,docsbox
+```
+
 ## Commands
 
 ### Setup
